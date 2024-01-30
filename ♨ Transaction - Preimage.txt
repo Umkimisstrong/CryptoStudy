@@ -1,0 +1,298 @@
+-------------------------------------------------
+--- 트랜잭션 프리이미지(Transaction Preimage) ---
+-------------------------------------------------
+
+--- 01. 트랜잭션 프리이미지(Transaction Preimage)
+	> 비트코인을 소비하기 위해서는 자신이 가진 코인 트랜잭션(UTXO)을 자신의 private key로 디지탈 서명(digital sig
+	  nature)을 해야 한다. 디지탈 서명은 특정 메시지를 private key로 서명하는 것인데, 이때 서명할 메시지를 비트코
+	  인에서는 Preimage 라 한다.
+	
+	> Preimage를 만드는 방법은 몇가지가 있는데, 비트코인은 이를 SIGHASH 플래그로 표시한다. 아래 여러 방식 중 가장
+	  많이 사용하는 방법은 트랜잭션 입출력 모두를 메시지에 포함시키는 SIGHASH_ALL 이다.
+
+	  public enum SIGHASH
+	  {
+	      SIGHASH_ALL = 0x01,		// signs every input and output
+	      SIGHASH_NONE = 0x02,		// signs all the inputs to the transaction
+	      SIGHASH_SINGLE = 0x03,		// signs all inputs, and exactly one corresponding output
+	      
+	      // Combined with the previous three via a bitwise &
+	      SIGHASH_ANYONECANPAY = 0x80
+	  }
+
+--- 02. Preimage 생성하기
+	> Preimage는 크게 초기에 사용되었던 Legacy방식과 이를 개선한 BIP 143 방식이 있다. 초기에 사용되었던 Legacy 생
+	  성 방식은 다음과 같다.
+
+	> Preimage 생성 Legacy 방식
+	  01. 트랜잭션 버전을 Little-endian 4바이트로 지정
+	  02. 트랜잭션 입력 트랜잭션 수를 가정변수(VarInt)로 지정
+	  03. ◎ 트랜잭션 입력 : 이전 트랜잭션의 트랜잭션 해시(Outpoint)
+	      ◎ 트랜잭션 입력 : 이전 트랜잭션의 트랜잭션 인데스(Outpoint)
+	      ◎ 트랜잭션 입력 : 이전 트랜잭션의 트랜잭션 출력의 ScriptPubKey 크기
+	      ◎ 트랜잭션 입력 : 이전 트랜잭션의 트랜잭션 출력의 ScriptPubKey(Locking Script)
+	  04. 트랜잭션 입력 : Sequence(0xffffffff로 지정)
+	  05. ◎ 트랜잭션 출력 : 트랜잭션 수를 가정변수(VarInt)로 지정
+	      ◎ 트랜잭션 출력 : 사용할 비트코인 액수(Amount)
+	      ◎ 트랜잭션 출력 : ScriptPubKey 크기
+	      ◎ 트랜잭션 출력 : ScriptPubKey
+	  06. Locktime을 Little-endian 4바이트로 지정
+	  07. SIGHASH를 Little-endian 4바이트로 지정
+
+	> Preimage 샘플 예제
+	  - 비트코인의 트랜잭션 서명을 위해서는
+	    (1) 아직 사용되지 않은 이전 트랜잭션 출력의 정보
+	    (2) Balance를 가진 이전 트랜잭션을 소비하는(그래서 서명이 필요한) 트랜잭션 등
+	    2개의 트랜잭션이 필요하다. 간단한 샘플 예제를 들기 위해서 여기서는 이전의 트랜잭션을 "TransactionA" 라 하
+	    고, 지금 소비하려는 트랜잭션을 "TransactionB"라 부르도록 한다. (참고로, 이 샘플 예제의 실행환경은 실제 Pr
+	    oduction이 아니라 Regtest 테스트 환경인데, 기본 개념은 동일하다.)
+	    먼저 예제에 사용된 기초 데이타는 다음과 같다.
+	
+	  - Alice Bitcoin Address : mrkSABUYh5wHxr7FFNcYFdDmaKixJ6nj1f
+	  - Bob Bitcoin Address : mtouYPNixHLywww9zdH1iw6YJU6jQQBkhq
+	  - Bob Public key(compressed) : 038697faa62cd53b943ec99712bb335ad6e57069ed22ee0bcf557e834fcb86e9ae
+	  - Bob Hash160(PublicKey) : 91ce68966d20af1ceaabee63ad9ed528eb82fed5
+	  - Bob Private Key(WIF) : cUpatWpXH2Cu8zMM5VmZgvqvtmpg6rpahePqzfKmjmmLkPYgawj1
+	
+	> TransactionA : Alice가 Bob에게 1.5 BTC를 지불한 이전의 트랜잭션. Bob은 여기서 받은 1.5 BTC를 TransactionB에
+	  사용한다.
+	
+	  - Transaction ID (rpc order) : 65f2a2746a2bb389448df009f709f170a1cc4fe0aea106eb8aa967efbef3c59d
+	  - Transaction Vout 인덱스 : 1
+	  - ScriptPubKey : 76a91491ce68966d20af1ceaabee63ad9ed528eb82fed588ac
+
+	  $ bitcoint-cli -regtest - rpcwallet=AliceWallet gettransaction 65f2a2746a2bb389448df009f709f170a1cc4fe0aea106eb8aa967efbef3c59d
+	  {
+	      "amount" : -1.50000000,
+	      "fee" : -0.00002250,
+	      "confirmations" : 2,
+	      "blockhash" : "2db30f6ce40c9d90802a1772ecdf53b54d04de8952a40b3139cd56cef912f9c0",
+	      "blockheight" : 106,
+	      "blockindex" : 1,
+	      "blocktime" : 1618077573,
+	      "txid" : "65f2a2746a2bb389448df009f709f170a1cc4fe0aea106eb8aa967efbef3c59d",
+	      "walletconflicts" : [],
+	      "time" : 1618077465,
+	      "timereceived" : 1618077465,
+	      "bip125-replaceable" : "no",
+	      "details" : [
+	      {
+	          "address" : "mtouYPNixHLywww9zdH1iw6YJU6jQQBkhq",
+		  "category" : "send",
+		  "amount" : -1.50000000,
+		  "vout" : 1,
+	          "fee" : -0.00002250,
+		  "abandoned" : false
+	      }
+	      ],
+	      "hex" : "020000000122cc4dc6d13c1026acf1a056d239459d02e0098f011effce99ca13de989455b9010000006a4730440220616fe9ecf76a5c3dfe9c7919f588b064b1f512885ee0673cd76e1a6cf68df62802206cdd70df59af62259677f93cabe8a5221ca859bc04e72c5073cf99c9ab1aae5401210300c1522b0e46ba7bae5964d49925416a8dae7fdef5f4cbdb2bef0703715c8f4cfeffffff02229998d3000000001976a9147b360d111b53ac31431075fd24d65e292145f8d288ac80d1f008000000001976a91491ce68966d20af1ceaabee63ad9ed528eb82fed588ac69000000"
+	  }
+	
+	  아직 사용되지 않는 트랜잭션 출력(UTXO)를 체크하기 위해서는 다음 명령을 사용할 수 있다.
+
+	  $ bitcoin-cli -regtest -rpcwallet=AliceWallet gettxout {txid} {vout}
+
+	  예 :
+	  $ bitcoint-cli -regtest -rpcwallet=AliceWalet gettxout 65f2a2746a2bb389448df009f709f170a1cc4fe0aea106eb8aa967efbef3c59d 1
+
+	> TransactionB : Bob이 Alice에게 1.4997 BTC를 지불하는 트랜잭션으로, 이전 트랜잭션 정보(TransactionA) 를 현재
+	  트랜잭션의 입력(transaction input)에 포함시켜 트랜잭션을 서명하게 된다.
+
+	  // Scenario 
+	  // Bob is sending 1.4997 BTC to Alice, from the 1.5 BTC UTXO output
+	  // (INPUT PARAMETERS)
+	  // UTXO
+	  string prevTxId = "65f2a2746a2bb389448df009f709f170a1cc4fe0aea106eb8aa967efbef3c59d"; // rpc order
+	  uint prevTxVout = 1;
+	  decimal prevTxAmount = 1.5M;
+	  string prevTxPaidAddr = "mtouYPNixHLywww9zdH1iw6YJU6jQQBkhq";
+	  // SENDTO
+	  decimal sendToAmount = 1.4997M;
+	  string sendToAddr = "mxpocwUyV7JJRTiQxmGrSp2YQZHjVLTHD7";
+
+	  // build preimage
+	  var prevs = new List<PreviousTransaction>();
+	  var outs = new List<TransactionOutput>();
+	
+	  // add PreviousTransaction
+	  byte [] prevTxScriptPubKey = P2PKHScript.Build(prevTxPaidAddr); // build p2pkh script
+	  var prev1 = new PreviousTransaction
+	  {
+	      TxId = new Hash(prevTxId, false),
+	      Vout = prevTxVout,
+	      TxOutput = new TransactionOutPut
+	      {
+	          Amount = (ulong)(prevTxAmount * CoinUnit.BTC),	// not used
+	          // add scriptPubKey of the UTXO
+	          ScriptPubKeySize = new VarInt(prevTxScriptPubKey.Length),
+		  ScriptPubKey = prevTxScriptPubKey
+	      }
+	  };
+	  prevs.Add(prev1);
+	
+	  // NOTE : SINGLE output here. If majority of fund is not spent, need to add change output.
+	  byte[] sendToHash160 = Address.AddressToHash160(sendToAddr);
+	  byte[] sendToScriptPubKey = P2PKHScript.Build(sendToHash160);
+	  var out1 = new TransactionOutput
+	  {
+	      Amount = (ulong)(sendToAmount & CoinUnit.BTC), // CoinUnit.BTC = 100000000
+	      ScriptPubKeySize = new VarInt(sendToScriptPubKey.Length),
+	      ScriptPubKey = sendToScriptPubKey
+	  };
+	  outs.Add(out1);
+
+	  PreImage pre = PreImage.Build(prevs, outs);
+	  pre.LockTime = 0x00;
+	  
+	  byte[] preimage = pre.CreatePreimage(0);
+	  string actual = preimage.ToHex();
+	  string expected = "02000000019dc5f3beef67a98aeb06a1aee04fcca170f109f709f08d4489b32b6a74a2f265010000001976a91491ce68966d20af1ceaabee63ad9ed528eb82fed588acffffffff01505cf008000000001976a914bdda627732ea369e1d8abb55b65b839b418a85ce88ac0000000001000000";
+	  Console.WriteLine("Actual : " + actual);
+	  Console.WriteLine("Expected : " + expected);
+
+	  /* 트랜잭션 서명
+	  string wif = "cUpatWpXH2Cu8zMM5VmZgvqvtmpg6rpahePqzfKmjmmLkPYgawj1"; //Bob
+	  var (ver, privkey, compress) = Address.WifToPrivate(wif);
+	  Transaction signedTx = Sign.SignTransaction(preimage, privkey);
+ 
+	  // scriptSig is non-deterministic as r, s will be different for each sign
+	  byte[] rawSigned = signedTx.Serialize();
+	  // Raw Transaction 데이타
+	  Debug.WriteLine(rawSigned.ToHex()); */
+
+	  트랜잭션 Preimage는 TransactionInput에 이전 트랜잭션의 Outpoint(Transaction ID + Vout)을 넣고, TransactionI
+	  nput.ScriptSig 안에 이전 트랜잭션의 ScriptPubKey 를 넣는다.
+
+	  public class PreImage
+	  {
+	      const int DEFAULT_TX_VERSION = 2;
+	      const uint DEFAULT_SEQUENCE = 0xffffffff;
+	      
+	      #region fields/props
+	      public int Version { get; set; }
+	      public VarInt InputCount { get; set;}
+	      public List<TransactionInput> Inputs { get; set; }
+	      public VarInt OutputCount { get; set; }
+	      public List<TransactionOutput> Outputs { get; set; }
+	      public uint LockTime { get; set; }
+
+	      // Support SIGHASH_ALL only
+	      public SIGHASH SigHash { get; } = SIGHASH.SIGHASH_ALL;
+	      #endregion
+
+	      public static PreImage Build (List<PreviousTransaction> txPrevs, List<TransactionOutput> txOuts)
+	      {
+	          PreImage pre = new PreImage();
+	          pre.Version = DEFAULT_TX_VERSION;
+	          if(pre.InputCount.Value > 0)
+	          {
+	              pre.Inputs = new List<TransactionInput>();
+	          }
+
+	          for (int i = 0; i< txPrevs.Count; i++)
+	          {
+	              var txin = new TransactionInput();
+	              txin.TxId = txPrevs[i].TxId;
+	              txin.Vout = txPrevs[i].Vout;
+	              txin.ScriptSigSize = txPrevs[i].TxOutput.ScriptPubKeySize;
+		      txin.ScriptSig = txPrevs[i].TxOutput.ScriptPubKey;
+		      txin.Sequence = DEFAULT_SEQUENCE;
+	 	      pre.Inputs.Add(txin);
+                  }
+
+		  pre.OutputCount = new VarInt(txOuts.Count);
+		  if(pre.OutputCount.Value > 0)
+	  	  {
+		      pre.Outputs = new List<TransactionOutput>();
+		  }
+		  pre.Outputs.AddRange(txOuts);
+
+		  return pre;
+	      }
+
+	      public byte [] CreatePreimage(int intputIndex = 0)
+	      {
+	          byte[] data;
+		  using(var mem = new MemoryStram())
+		  using(var wr = new BinaryWriter(mem))
+		  {
+		      wr.Write(this.Version);
+		      wr.Write(this.InputCount.Bytes);
+		      for(int i = 0; i< (int)this.InputCount.Value; i++)
+		      {
+		          TransactionInput txin = this.Inputs[i];
+			  if(i != inputIndex)
+			  {
+			      // for all other tx inputs, set scriptSigSize to 0x00
+			      // so that it only put 0x00 for both ScriptSigSize and ScriptSig
+			      // in TransactionInput serialization output
+
+			      txin.ScriptSigSize = new VarInt(0x00);
+			      txin.ScriptSig = null;
+			  }
+	
+			  txin.Sequence = 0xffffffff; // always ffffffff
+			  var txser = txin.Serialize();
+			  wr.Write(txser);
+		      }
+
+		      wr.Write(this.OutputCount.Bytes);
+		      for(int i = 0; i < (int)this.OutputCount.Value; i++)
+		      {
+		          byte [] txout = this.Outputs[i].Serialize();
+		          wr.Write(txout);
+		      }
+		      wr.Write(this.LockTime);
+		      // preimage adds 4 bytes sighash at the end
+		      wr.Write((uint)this.SigHash);
+		      data = mem.ToArray();
+		  }
+
+	          return data;
+	      }
+	  }
+	
+	  //... 생략
+
+	  public class PreviousTransaction
+	  {
+	      public Hash TxId { get; set; }
+	      public uint Vout { get; set; }
+	      public TransactionOutput TxOutput { get; set; }
+	  }
+
+
+
+
+	  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          
+	
