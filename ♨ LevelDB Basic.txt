@@ -1,0 +1,149 @@
+-------------------------------------
+--- Level DB 기초(Level DB Basic) ---
+-------------------------------------
+
+--- 01. LevelDB 개요
+	> LevelDB는 Google에서 개발된 Key-Value 쌍을 저장하는 바르고, 가벼운 데이터베이스이다.
+	> LevelDB는 C++로 개발되어 있으며, github.com/google/leveldb 에 오픈소스로 공개되어 있다.
+	> LevelDB는 C++, Nodejs, Java, C# 등 여러 프로그래밍 언어에서 사용될 수 있으며, Linux, MaxOSX, Windows및 모바
+	  일 플랫폼에서 사용될 수 있다.
+	
+	> LevelDB는 키-값 엔트리(Key-Value Pair)를 저장하는 저장소로서 이는 관계형 DB가 아니며 따라서 SQL쿼리 등을 사
+	  용할 수 없다. 일반적으로 응용 프로그램이 LevelDB를 자신의 프로그램 안에 포함시켜 라이브러리 형태로 사용하는
+	  것이 일반적이다.
+
+	> LevelDB는 Google Chrome에서 사용하는 IndexedDB 에서 사용되며, Bitcoin Core 와 이더리움 등에서 블럭체인의 메
+	  타데이타를 저장하기 위해 사용된다.
+
+--- 02. LevelDB 설치
+	> LevelDB을 C#에서 사용하기위해 C++ LevelDB 라이브러리를 래핑한 C# 라이브러리를 사용할 수 있는데, 여기서는 그
+	  중 하나인 LevelDB.Standard를 사용해 본다. 이 라이브러리는 다음과 같은 명령으로 nuget.org에서 다운받을 수 있
+	  다.
+	
+	  Install-Package LevelDB.Standard
+
+	> LevelDB 생성
+	  LevelDB을 사용하기 위해서는 먼저 DB를 생성하거나 오픈하여야 하는데, 아래 C#예제는 C:\LevelFolder 디렉토리에 
+	  LevelDB를 생성하고 오픈하는 코드이다. 만약 LevelDB가 이미 생성되어 있으면, LevelDB를 오픈하게 된다. LevelDB
+	  는 생성시 폴더에 여러 DB 파일들을 자동으로 만들게 된다.
+	
+	  // using LevelDB;
+	  string dbpath = @"C:\LevelFolder";
+	  var dbOptions = new Options { CreateIfMissing = true };
+	  db = new DB (dbOptions, dbpath);
+
+	  // ... db 명령 실행 ...
+	  db.Close();
+
+	> LevelDB 사용이 모두 끝났으면 db.Close()를 수행한다.
+
+--- 03. LevelDB의 기본 동작
+	> LevelDB는 기본적으로 3개의 동작(Get, Put, Delete)을 지원한다. 즉 Key의 데이타를 읽는 Get 동작, 키-값 엔트리
+	  를 추가 혹은 수정하는 Put 동작, Key를 삭제하는 Delete 동작 등이 있다.
+
+	> Put 메서드
+	  Put 메서드는 주어진 키(key)에 지정된 값(value)을 저장할 때 사용된다. 만약 키가 없으면 새로 생성하고, 기존에
+	  키가 있으면 해당 키에 새 값을 수정하여 저장한다. 키(key)는 string, byte[], int 등의 타입을 사용할 수 있다.
+	  
+	  db.Put("myKey", "my value");
+
+	> Get 메서드
+	  Get 메서드는 주어진 키(key)에 매핑되어 있는 값(value) 을 리턴하는 기능을 제공한다. 만약 키에 매핑된 값이 없
+	  으면, null 을 리턴한다.
+
+	  string val = db.Get("mykey");
+
+	> delete 메서드
+	  Delete 메서드는 주어진 키를 삭제하는 기능으로 키-값 엔트리를 삭제하게 된다.
+	  
+	  db.Delete("mykey");
+
+--- 04. LevelDB 전체 데이타 출력
+	> LevelDB는 DB내의 데이타를 하나씩 불러올 수 있는 Iterator 기능을 제공한다. 예를 들어, LevelDB 안에 있는 전체
+	  데이타를 출력해 보기 위해서 Iterator 기능을 사용할 수 있다. LevelDB의 CreateIterator()메서드를 사용하면 Lev
+	  elDB.Iterator 객체를 리턴받게 되는데, 이 Iterator 객체의 Seek*() 혹은 Next()같은 메서드를 사용하여 키-값 엔
+	  트리를 순회하면서 데이타를 출력할 수 있다. 아래 예제는 LevelDB 안에 있는 모든 키-값 엔트리를 출력 하는 샘플
+	  이다.
+
+	  var iterator = db.CreateIterator();
+	  iterator.SeekToFirst();
+	  while(iterator.IsValid())
+	  {
+	      byte [] k = iterator.Key();
+	      byte [] v = iterator.Value();
+	
+	      Console.WriteLine(Encoding.Default.GetString(k)
+	      + ":"
+	      + Encoding.Default.GetString(v));
+
+	      iterator.Next();
+	  }
+
+	> LevelDB 일괄 배치 처리
+	  LevelDB는 일반 관계형 DB에서 통상 제공하는 일괄 배치 처리(혹은 트랜잭션 배치 처리) 기능을 제공한다. 즉 여러
+	  개의 INSERT, UPDATE, DELETE 들을 하나로 묶어 배치 처리로 처리하는 것인데, 이는 모두 처리되든지 혹은 모두 취
+	  소되는 배치 트랜잭션 기능을 제공하는 것이다. 만약 중간에 에러가 난다면 모든 트랜잭션은 취소된다. 배치처리는
+	  WriteBatch 인스턴스를 생성하고 WriteBatch.Put() 혹은 WriteBatch.Delete() 를 사용하여 INSERT, UPDATE, DELETE
+	  명령들을 정의하고, 마지막 DB.Write(batch) 에서 일괄적으로 배치 처리하게 된다. 아래 예제는 LevelDB 에서 일괄
+	  배치로 3개의 INSERT/UPDATE를 수행하는 코드이다. WriteBatch 객체를 사용이 끝난 후 Dispose 해주어야 한다.
+
+	  // using LevelDB;
+	  using (var batch = new WriteBatch())
+	  {
+	      batch.Delete("code0");
+	      batch.Put("code1", "Value1");
+	      batch.Put("code2", "Value2");
+	      batch.Put("code3", "Value3");
+	    
+	      db.Write(batch);
+	  }
+
+--- 05. LevelDB 스냅샷
+	> Snapshot 은 특정 시점에 있는 DB 상태를 저장하는 기능으로서 특정 시점의 DB를 복사해서 읽을 때 사용된다. DB.C
+	  reateSnapshot() 메서드는 그 싯점의 DB 상태를 SnapShot 객체에 저장하는데, DB.Get 에서 키를 읽을 때, SnapShot
+	  객체를 지정하면 그 스냅샷으로부터 데이타를 읽게 된다. 아래 예제는 SnapShot 이후 변경된 값이 SnapShot 으로부
+	  터 데이타를 읽게 된다. 아래 예제는 SnapShot이후 변경된 값이 SnapShot으로부터 읽을 때는 반영되지 않는다는 것
+	  을 예시한 코드이다.
+
+	  // using LevelDB;
+	  db.Put ("k1", "A");
+	  SnapShot snap = db.CreateSnapshot();
+	  db.Put("k1", "B");
+	  var k1 = db.Get("k1", new ReadOptions { Snapshot = snap });
+	  Console.WriteLine(k1);			// "A"
+	  Console.WriteLine(db.Get("k1"))		// "B"
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	  
